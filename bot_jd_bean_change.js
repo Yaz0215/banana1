@@ -140,13 +140,6 @@ if(DisableIndex!=-1){
 	console.log("检测到设定关闭京喜牧场查询");
 	EnableJxMC=false;	
 }
-//京喜工厂
-let EnableJxGC=true;
-DisableIndex=strDisableList.findIndex((item) => item === "京喜工厂");
-if(DisableIndex!=-1){
-	console.log("检测到设定关闭京喜工厂查询");
-	EnableJxGC=false;	
-}
 
 // 京东工厂
 let EnableJDGC=true;
@@ -244,7 +237,8 @@ if(DisableIndex!=-1){
         $.jxFactoryInfo = '';
         $.jxFactoryReceive = '';
         $.jdCash = 0;
-        $.isPlusVip = 0;
+        $.isPlusVip = false;
+		$.isRealNameAuth=false;
         $.JingXiang = "";
         $.allincomeBean = 0; //月收入
         $.allexpenseBean = 0; //月支出
@@ -264,11 +258,11 @@ if(DisableIndex!=-1){
         $.YunFeiQuanEndTime2 = "";
 		$.JoyRunningAmount = "";
 		$.ECardinfo = "";
+		$.PlustotalScore=0;
+		
         TempBaipiao = "";
         strGuoqi = "";
-		await Promise.all([
-		        TotalBean(),
-		        TotalBean2()])
+		await TotalBean()
 		
         if (!$.isLogin) {
             await isLoginByX1a0He();
@@ -286,12 +280,12 @@ if(DisableIndex!=-1){
 		         cash(), //极速金币
 		         jdJxMCinfo(), //京喜牧场
 		         bean(), //京豆查询
-		         getJxFactory(), //京喜工厂
 		         getDdFactoryInfo(), // 京东工厂
 		         jdCash(), //领现金
 		         GetJxBeaninfo(), //喜豆查询	
 				 GetJoyRuninginfo(), //汪汪赛跑 
-				 CheckEcard() //E卡查询
+				 CheckEcard(), //E卡查询
+				 queryScores() 
 		     ])
 
         await showMsg();        
@@ -311,41 +305,17 @@ async function showMsg() {
 	ReturnMessage = "";
 	var strsummary="";
 	ReturnMessageTitle = `【您的账号🆔${(intcheckckseq+1)}收支情况】\n`;
-
-	if ($.levelName || $.JingXiang){
-		ReturnMessage += `【账号信息】`;
-		if ($.levelName) {
-			if ($.levelName.length > 2)
-				$.levelName = $.levelName.substring(0, 2);
-
-			if ($.levelName == "注册")
-				$.levelName = `😊普通`;
-
-			if ($.levelName == "钻石")
-				$.levelName = `💎钻石`;
-
-			if ($.levelName == "金牌")
-				$.levelName = `🥇金牌`;
-
-			if ($.levelName == "银牌")
-				$.levelName = `🥈银牌`;
-
-			if ($.levelName == "铜牌")
-				$.levelName = `🥉铜牌`;
-
-			if ($.isPlusVip == 1)
-				ReturnMessage += `${$.levelName}Plus`;
-			else
-				ReturnMessage += `${$.levelName}会员`;
-		}
-
-		if ($.JingXiang){
-			if ($.levelName) {
-				ReturnMessage +=",";
-			}
-			ReturnMessage += `${$.JingXiang}`;
-		}
-		ReturnMessage +=`\n`;
+	
+	if ($.JingXiang) {		
+	    ReturnMessage += `【账号信息】`;
+	    if ($.isPlusVip) {
+	        ReturnMessage += `Plus会员`;
+	        if ($.PlustotalScore)
+	            ReturnMessage += `(${$.PlustotalScore}分)`
+	    } else {
+	        ReturnMessage += `普通会员`;
+	    }  
+	    ReturnMessage += `,京享值${$.JingXiang}\n`;	    
 	}
 	
 	ReturnMessage += `【今日京豆】收${$.todayIncomeBean}豆`;
@@ -560,7 +530,7 @@ async function bean() {
 		// console.log(`第${page}页: ${JSON.stringify(response)}`);
 		if (response && response.code === "0") {
 			page++;
-			let detailList = response.detailList;
+			let detailList = response.jingDetailList;
 			if (detailList && detailList.length > 0) {
 				for (let item of detailList) {
 					const date = item.date.replace(/-/g, '/') + "+08:00";
@@ -761,13 +731,17 @@ function getSign(functionId, body) {
     })
   })
 }
-function TotalBean() {
+
+/* function TotalBean() {
 	return new Promise(async resolve => {
 		const options = {
 			url: "https://me-api.jd.com/user_new/info/GetJDUserInfoUnion",
 			headers: {
+				"Accept": "application/json, text/plain",
+				"accept-encoding": "gzip, deflate, br",
+				"content-type": "application/json;charset=UTF-8",
 				Cookie: cookie,
-				"User-Agent": "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1",
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.42"
 			},
 			timeout: 10000
 		}
@@ -775,7 +749,7 @@ function TotalBean() {
 			try {
 				if (err) {
 					$.logErr(err)
-				} else {
+				} else {					
 					if (data) {
 						data = JSON.parse(data);
 
@@ -807,54 +781,60 @@ function TotalBean() {
 			}
 		})
 	})
+} */
+
+function TotalBean() {
+    return new Promise(async resolve => {
+        const options = {
+            "url": `https://wq.jd.com/user/info/QueryJDUserInfo?sceneval=2`,
+            "headers": {
+                "Accept": "application/json,text/plain, */*",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Language": "zh-cn",
+                "Connection": "keep-alive",
+                "Cookie": cookie,
+                "Referer": "https://wqs.jd.com/my/jingdou/my.shtml?sceneval=2",
+                "User-Agent": $.isNode() ? (process.env.JD_USER_AGENT ? process.env.JD_USER_AGENT : (require('./USER_AGENTS').USER_AGENT)) : ($.getdata('JDUA') ? $.getdata('JDUA') : "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1")
+            }
+        }
+        $.post(options, (err, resp, data) => {
+            try {
+                if (err) {
+                    console.log(`${JSON.stringify(err)}`)
+                    console.log(`${$.name} API请求失败，请检查网路重试`)
+                } else {
+                    if (data) {
+                        data = JSON.parse(data);
+                        if (data['retcode'] === 13) {
+                            $.isLogin = false; //cookie过期
+                            return
+                        }
+                        if (data['retcode'] === 0) {
+                            $.nickName = (data['base'] && data['base'].nickname) || $.UserName;
+							$.isPlusVip=data['isPlusVip'];
+							$.isRealNameAuth=data['isRealNameAuth'];
+							$.beanCount=(data['base'] && data['base'].jdNum) || 0 ;		
+							$.JingXiang = (data['base'] && data['base'].jvalue) || 0 ;						
+                        } else {
+                            $.nickName = $.UserName
+                        }
+						
+							
+							
+                    } else {
+                        console.log(`京东服务器返回空数据`)
+                    }
+                }
+            } catch (e) {
+                $.logErr(e, resp)
+            } finally {
+                resolve();
+            }
+        })
+    })
 }
-function TotalBean2() {
-	return new Promise(async(resolve) => {
-		const options = {
-			url: `https://wxapp.m.jd.com/kwxhome/myJd/home.json?&useGuideModule=0&bizId=&brandId=&fromType=wxapp&timestamp=${Date.now()}`,
-			headers: {
-				Cookie: cookie,
-				'content-type': `application/x-www-form-urlencoded`,
-				Connection: `keep-alive`,
-				'Accept-Encoding': `gzip,compress,br,deflate`,
-				Referer: `https://servicewechat.com/wxa5bf5ee667d91626/161/page-frame.html`,
-				Host: `wxapp.m.jd.com`,
-				'User-Agent': `Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.10(0x18000a2a) NetType/WIFI Language/zh_CN`,
-			},
-			timeout: 10000
-		};
-		$.post(options, (err, resp, data) => {
-			try {
-				if (err) {
-					$.logErr(err);
-				} else {
-					if (data) {						
-						data = JSON.parse(data);						
-						if (!data.user) {
-							return;
-						}
-						const userInfo = data.user;						
-						if (userInfo) {
-							if (!$.nickName)
-								$.nickName = userInfo.petName;
-							if ($.beanCount == 0) {
-								$.beanCount = userInfo.jingBean;
-							}
-							$.JingXiang = userInfo.uclass;
-						}
-					} else {
-						$.log('京东服务器返回空数据');
-					}
-				}
-			} catch (e) {
-				$.logErr(e);
-			}
-			finally {
-				resolve();
-			}
-		});
-	});
-}
+
 
 function isLoginByX1a0He() {
 	return new Promise((resolve) => {
@@ -890,40 +870,37 @@ function isLoginByX1a0He() {
 		});
 	});
 }
-
 function getJingBeanBalanceDetail(page) {
-	return new Promise(async resolve => {
-		const options = {
-			"url": `https://api.m.jd.com/client.action?functionId=getJingBeanBalanceDetail`,
-			"body": `body=${escape(JSON.stringify({"pageSize": "20", "page": page.toString()}))}&appid=ld`,
-			"headers": {
-				'User-Agent': $.isNode() ? (process.env.JD_USER_AGENT ? process.env.JD_USER_AGENT : (require('./USER_AGENTS').USER_AGENT)) : ($.getdata('JDUA') ? $.getdata('JDUA') : "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1"),
-				'Host': 'api.m.jd.com',
-				'Content-Type': 'application/x-www-form-urlencoded',
-				'Cookie': cookie,
-			}
-		}
-		$.post(options, (err, resp, data) => {
-			try {
-				if (err) {
-					console.log(`${JSON.stringify(err)}`)
-					console.log(`getJingBeanBalanceDetail API请求失败，请检查网路重试`)
-				} else {
-					if (data) {
-						data = JSON.parse(data);
-						// console.log(data)
-					} else {
-						console.log(`京东服务器返回空数据`)
-					}
-				}
-			} catch (e) {
-				$.logErr(e, resp)
-			}
-			finally {
-				resolve(data);
-			}
-		})
-	})
+  return new Promise(async resolve => {
+    const options = {
+      "url": `https://bean.m.jd.com/beanDetail/detail.json?page=${page}`,
+      "body": `body=${escape(JSON.stringify({"pageSize": "20", "page": page.toString()}))}&appid=ld`,
+      "headers": {
+        'User-Agent': "Mozilla/5.0 (Linux; Android 12; SM-G9880) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Mobile Safari/537.36 EdgA/106.0.1370.47",       
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': cookie,
+      }
+    }
+    $.post(options, (err, resp, data) => {
+      try {
+        if (err) {
+          // console.log(`${JSON.stringify(err)}`)
+          // console.log(`${$.name} API请求失败，请检查网路重试`)
+        } else {
+          if (data) {
+            data = JSON.parse(data);
+            // console.log(data)
+          } else {
+            // console.log(`京东服务器返回空数据`)
+          }
+        }
+      } catch (e) {
+        // $.logErr(e, resp)
+      } finally {
+        resolve(data);
+      }
+    })
+  })
 }
 function queryexpirejingdou() {
 	return new Promise(async resolve => {
@@ -1042,41 +1019,60 @@ function redPacket() {
 						$.jsRed = 0,
 						$.jdRed = 0,
 						$.jdhRed = 0,
+						$.jdwxRed = 0,
+						$.jdGeneralRed = 0,
 						$.jxRedExpire = 0,
 						$.jsRedExpire = 0,
 						$.jdRedExpire = 0,
 						$.jdhRedExpire = 0;
+						$.jdwxRedExpire = 0,
+						$.jdGeneralRedExpire = 0
+						
 						let t = new Date();
 						t.setDate(t.getDate() + 1);
 						t.setHours(0, 0, 0, 0);
 						t = parseInt((t - 1) / 1000);
+						//console.log(JSON.stringify(data.useRedInfo.redList))
 						for (let vo of data.useRedInfo.redList || []) {
-							if (vo.orgLimitStr && vo.orgLimitStr.includes("京喜")) {
+							if (vo.limitStr && vo.limitStr.includes("京喜")) {
 								$.jxRed += parseFloat(vo.balance)
 								if (vo['endTime'] === t) {
 									$.jxRedExpire += parseFloat(vo.balance)
 								}
-							} else if (vo.activityName.includes("极速版")) {
+							} else if (vo.limitStr.includes("购物小程序")) {
+								$.jdwxRed += parseFloat(vo.balance)
+								if (vo['endTime'] === t) {
+									$.jdwxRedExpire += parseFloat(vo.balance)
+								}
+							} else if (vo.limitStr.includes("京东商城")) {
+								$.jdRed += parseFloat(vo.balance)
+								if (vo['endTime'] === t) {
+									$.jdRedExpire += parseFloat(vo.balance)
+								}
+							} else if (vo.limitStr.includes("极速版") || vo.limitStr.includes("京东特价")) {
 								$.jsRed += parseFloat(vo.balance)
 								if (vo['endTime'] === t) {
 									$.jsRedExpire += parseFloat(vo.balance)
 								}
-							} else if (vo.orgLimitStr && vo.orgLimitStr.includes("京东健康")) {
+							} else if (vo.limitStr && vo.limitStr.includes("京东健康")) {
 								$.jdhRed += parseFloat(vo.balance)
 								if (vo['endTime'] === t) {
 									$.jdhRedExpire += parseFloat(vo.balance)
 								}
 							} else {
-								$.jdRed += parseFloat(vo.balance)
+								$.jdGeneralRed += parseFloat(vo.balance)
 								if (vo['endTime'] === t) {
-									$.jdRedExpire += parseFloat(vo.balance)
+									$.jdGeneralRedExpire += parseFloat(vo.balance)
 								}
 							}
 						}
+				
 						$.jxRed = $.jxRed.toFixed(2);
 						$.jsRed = $.jsRed.toFixed(2);
-						$.jdRed = $.jdRed.toFixed(2);
+						$.jdRed = $.jdRed.toFixed(2);						
 						$.jdhRed = $.jdhRed.toFixed(2);
+						$.jdwxRed = $.jdwxRed.toFixed(2);
+						$.jdGeneralRed = $.jdGeneralRed.toFixed(2);
 						$.balance = data.balance;
 						$.expiredBalance = ($.jxRedExpire + $.jsRedExpire + $.jdRedExpire).toFixed(2);
 						$.message += `【红包总额】${$.balance}(总过期${$.expiredBalance})元 \n`;
@@ -1088,6 +1084,10 @@ function redPacket() {
 							$.message += `【京东红包】${$.jdRed}(将过期${$.jdRedExpire.toFixed(2)})元 \n`;
 						if ($.jdhRed > 0)
 							$.message += `【健康红包】${$.jdhRed}(将过期${$.jdhRedExpire.toFixed(2)})元 \n`;
+						if ($.jdwxRed > 0)
+							$.message += `【微信小程序】${$.jdwxRed}(将过期${$.jdwxRedExpire.toFixed(2)})元 \n`;
+						if ($.jdGeneralRed > 0)
+							$.message += `【全平台通用】${$.jdGeneralRed}(将过期${$.jdGeneralRedExpire.toFixed(2)})元 \n`;
 					} else {
 						console.log(`京东服务器返回空数据`)
 					}
@@ -1131,7 +1131,7 @@ function getCoupon() {
 					//console.log(useable[i]);
                     if (useable[i].limitStr.indexOf('全品类') > -1) {
                         $.beginTime = useable[i].beginTime;
-                        if ($.beginTime < new Date().getTime() && useable[i].quota < 20 && useable[i].coupontype === 1) {                           
+                        if ($.beginTime < new Date().getTime() && useable[i].quota <= 100 && useable[i].coupontype === 1) {                           
 							//$.couponEndTime = new Date(parseInt(useable[i].endTime)).Format('yyyy-MM-dd');
                             $.couponName = useable[i].limitStr;
 							if (useable[i].platFormInfo) 
@@ -1335,9 +1335,14 @@ function jdfruitRequest(function_id, body = {}, timeout = 1000) {
 						console.log(`function_id:${function_id}`)
 						$.logErr(err);
 					} else {
-						if (safeGet(data)) {
+						if (safeGet(data)) {							
 							data = JSON.parse(data);
-							$.JDwaterEveryDayT = data.totalWaterTaskInit.totalWaterTaskTimes;
+							if (data.code=="400"){
+								console.log('东东农场: '+data.message)							
+								llgeterror = true;
+							}
+							else
+								$.JDwaterEveryDayT = data.totalWaterTaskInit.totalWaterTaskTimes;
 						}
 					}
 				} catch (e) {
@@ -1360,7 +1365,8 @@ async function getjdfruitinfo() {
             "channel": 1,
             "babelChannel": "120"
         });
-
+		if (llgeterror)
+			return
         await getjdfruit();
         if (llgeterror) {
             console.log(`东东农场API查询失败,等待10秒后再次尝试...`)
@@ -1619,132 +1625,6 @@ async function JxmcGetRequest() {
 	})
 }
 
-// 惊喜工厂信息查询
-async function getJxFactory() {
-	if (!EnableJxGC)
-		return;
-	return new Promise(async resolve => {
-		let infoMsg = "";
-		let strTemp = "";
-		await $.get(jxTaskurl('userinfo/GetUserInfo', `pin=&sharePin=&shareType=&materialTuanPin=&materialTuanId=&source=`, '_time,materialTuanId,materialTuanPin,pin,sharePin,shareType,source,zone'), async(err, resp, data) => {
-			try {
-				if (err) {
-					$.jxFactoryInfo = "";
-					//console.log("jx工厂查询失败"  + err)
-				} else {
-					if (safeGet(data)) {
-						data = JSON.parse(data);
-						if (data['ret'] === 0) {
-							data = data['data'];
-							$.unActive = true; //标记是否开启了京喜活动或者选购了商品进行生产
-							if (data.factoryList && data.productionList) {
-								const production = data.productionList[0];
-								const factory = data.factoryList[0];
-								//const productionStage = data.productionStage;
-								$.commodityDimId = production.commodityDimId;
-								// subTitle = data.user.pin;
-								await GetCommodityDetails(); //获取已选购的商品信息
-								infoMsg = `${$.jxProductName}(${((production.investedElectric / production.needElectric) * 100).toFixed(0)}%`;
-								if (production.investedElectric >= production.needElectric) {
-									if (production['exchangeStatus'] === 1) {
-										infoMsg = `${$.jxProductName}已可兑换`;
-										$.jxFactoryReceive = `${$.jxProductName}`;
-									}
-									if (production['exchangeStatus'] === 3) {
-										if (new Date().getHours() === 9) {
-											infoMsg = `兑换超时，请重选商品!`;
-										}
-									}
-									// await exchangeProNotify()
-								} else {
-									strTemp = `,${((production.needElectric - production.investedElectric) / (2 * 60 * 60 * 24)).toFixed(0)}天)`;
-									if (strTemp == ",0天)")
-										infoMsg += ",今天)";
-									else
-										infoMsg += strTemp;
-								}
-								if (production.status === 3) {
-									infoMsg = "商品已失效，请重选商品!";
-								}
-							} else {
-								$.unActive = false; //标记是否开启了京喜活动或者选购了商品进行生产
-								if (!data.factoryList) {
-									infoMsg = ""
-										// $.msg($.name, '【提示】', `京东账号${$.index}[${$.nickName}]京喜工厂活动未开始\n请手动去京东APP->游戏与互动->查看更多->京喜工厂 开启活动`);
-								} else if (data.factoryList && !data.productionList) {
-									infoMsg = ""
-								}
-							}
-						}
-					} else {
-						console.log(`GetUserInfo异常：${JSON.stringify(data)}`)
-					}
-				}
-				$.jxFactoryInfo = infoMsg;
-				// console.log(infoMsg);
-			} catch (e) {
-				$.logErr(e, resp)
-			}
-			finally {
-				resolve();
-			}
-		})
-	})
-}
-
-// 惊喜的Taskurl
-function jxTaskurl(functionId, body = '', stk) {
-	let url = `https://m.jingxi.com/dreamfactory/${functionId}?zone=dream_factory&${body}&sceneval=2&g_login_type=1&_time=${Date.now()}&_=${Date.now() + 2}&_ste=1`
-		url += `&h5st=${decrypt(Date.now(), stk, '', url)}`
-		if (stk) {
-			url += `&_stk=${encodeURIComponent(stk)}`;
-		}
-		return {
-		url,
-		headers: {
-			'Cookie': cookie,
-			'Host': 'm.jingxi.com',
-			'Accept': '*/*',
-			'Connection': 'keep-alive',
-			'User-Agent': functionId === 'AssistFriend' ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36" : 'jdpingou',
-			'Accept-Language': 'zh-cn',
-			'Referer': 'https://wqsd.jd.com/pingou/dream_factory/index.html',
-			'Accept-Encoding': 'gzip, deflate, br',
-		},
-		timeout: 10000
-	}
-}
-
-//惊喜查询当前生产的商品名称
-function GetCommodityDetails() {
-	return new Promise(async resolve => {
-		// const url = `/dreamfactory/diminfo/GetCommodityDetails?zone=dream_factory&sceneval=2&g_login_type=1&commodityId=${$.commodityDimId}`;
-		$.get(jxTaskurl('diminfo/GetCommodityDetails', `commodityId=${$.commodityDimId}`, `_time,commodityId,zone`), (err, resp, data) => {
-			try {
-				if (err) {
-					console.log(`${JSON.stringify(err)}`)
-					console.log(`GetCommodityDetails API请求失败，请检查网路重试`)
-				} else {
-					if (safeGet(data)) {
-						data = JSON.parse(data);
-						if (data['ret'] === 0) {
-							data = data['data'];
-							$.jxProductName = data['commodityList'][0].name;
-						} else {
-							console.log(`GetCommodityDetails异常：${JSON.stringify(data)}`)
-						}
-					}
-				}
-			} catch (e) {
-				$.logErr(e, resp)
-			}
-			finally {
-				resolve();
-			}
-		})
-	})
-}
-
 // 东东工厂信息查询
 async function getDdFactoryInfo() {
 	if (!EnableJDGC)
@@ -1991,7 +1871,6 @@ async function jxbean() {
 
 }
 
-
 function GetJoyRuninginfo() {
 	if (!EnableJoyRun)
 		return;
@@ -2005,9 +1884,9 @@ function GetJoyRuninginfo() {
         "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": cookie,
         "Host": "api.m.jd.com",
-        "Origin": "https://joypark.jd.com",
-        "Referer": "https://joypark.jd.com/",
-        "User-Agent": $.UA
+        "Origin": "https://h5platform.jd.com",
+        "Referer": "https://h5platform.jd.com/",
+        "User-Agent": `jdpingou;iPhone;4.13.0;14.4.2;${randomString(40)};network/wifi;model/iPhone10,2;appBuild/100609;ADID/00000000-0000-0000-0000-000000000000;supportApplePay/1;hasUPPay/0;pushNoticeIsOpen/1;hasOCPay/0;supportBestPay/0;session/${Math.random * 98 + 1};pap/JA2019_3111789;brand/apple;supportJDSHWK/1;Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148`
 		}
 	var DateToday = new Date();
 	const body = {
@@ -2016,15 +1895,15 @@ function GetJoyRuninginfo() {
 		'joyLinkId':'LsQNxL7iWDlXUs6cFl-AAg'
     };
     const options = {
-        url: `https://api.m.jd.com/?functionId=runningPageHome&body=${encodeURIComponent(JSON.stringify(body))}&t=${DateToday.getTime()}&appid=activities_platform&client=ios&clientVersion=3.8.12`,
+        url: `https://api.m.jd.com/?functionId=runningPageHome&body=${encodeURIComponent(JSON.stringify(body))}&t=${DateToday.getTime()}&appid=activities_platform&client=ios&clientVersion=3.9.2`,
         headers,
     }
-    return new Promise(resolve => {
+	return new Promise(resolve => {
         $.get(options, (err, resp, data) => {
             try {
                 if (err) {
                     console.log(`${JSON.stringify(err)}`)
-                    console.log(`${$.name} API请求失败，请检查网路重试`)
+                    console.log(`GetJoyRuninginfo API请求失败，请检查网路重试`)
                 } else {
                     if (data) {
 						//console.log(data);
@@ -2043,7 +1922,6 @@ function GetJoyRuninginfo() {
         })
     })
 }
-
 	
 function randomString(e) {
 	e = e || 32;
@@ -2281,6 +2159,32 @@ function GetDateTime(date) {
 		timeString += date.getSeconds();
 
 	return timeString;
+}
+
+async function queryScores() {
+	if (!$.isPlusVip)
+		return
+    let res = ''
+    let url = {
+      url: `https://rsp.jd.com/windControl/queryScore/v1?lt=m&an=plus.mobile&stamp=${Date.now()}`,
+      headers: {
+        'Cookie': cookie,
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Redmi Note 8 Pro Build/QP1A.190711.020; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045715 Mobile Safari/537.36',
+        'Referer': 'https://plus.m.jd.com/rights/windControl'
+      }
+    };
+	
+    $.get(url, async (err, resp, data) => {
+      try {
+        const result = JSON.parse(data)
+        if (result.code == 1000) {
+		  $.PlustotalScore=result.rs.userSynthesizeScore.totalScore;
+        } 
+      } catch (e) {
+        $.logErr(e, resp);
+      }
+    })
+  
 }
 
 // prettier-ignore
